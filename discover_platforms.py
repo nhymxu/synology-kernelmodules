@@ -9,6 +9,7 @@ platform, with the toolchain URL, kernel source URL and kernel version for each:
       "toolchain": "https://global.synologydownload.com/.../apollolake-gcc1220_glibc236_x86_64-GPL.txz",
       "kernel": "https://global.synologydownload.com/.../apollolake/linux-4.4.x.txz",
       "release": "7.4-90080",
+      "dsm": "7.4",
       "VERSION": "4", "PATCHLEVEL": "4", "SUBLEVEL": "302", "EXTRAVERSION": "+",
       "ARCH": "x86_64",
       "CROSS_COMPILE": "/usr/local/x86_64-pc-linux-gnu/bin/x86_64-pc-linux-gnu-"
@@ -21,10 +22,24 @@ platforms), so each platform uses the newest DSM 7 release that contains it.
 A platform appears as soon as Synology publishes both a toolchain and kernel
 source for it.
 
-Usage:
-  discover_platforms.py [--dsm 7.2] [--summary FILE]
+Pass --dsm to build from specific DSM releases instead of the newest ones. The
+output is then keyed by DSM version first, so one run can cover several of them:
 
-  --dsm      only use releases for this DSM version (e.g. "7.2" also matches 7.2.1, 7.2.2)
+  {
+    "7.2": {"apollolake": {...}, ...},
+    "7.4": {"apollolake": {...}, ...}
+  }
+
+A platform appears under every requested DSM that has both a toolchain and
+kernel source for it. Platforms that only have sources in some other DSM (e.g.
+cedarview in 7.1.1) are still included, under the DSM they do have sources for,
+so a multi-DSM build never drops a platform.
+
+Usage:
+  discover_platforms.py [--dsm 7.2 [--dsm 7.4 ...]] [--summary FILE]
+
+  --dsm      use releases for this DSM version (e.g. "7.2" also matches 7.2.1,
+             7.2.2); repeat it for several DSM versions
   --summary  also write a Markdown table of what was found
 
 Works on Python 3.6+ with only the standard library.
@@ -114,6 +129,7 @@ def discover(dsm=None):
             "toolchain": tc_url,
             "kernel": kn_url,
             "release": kn_rel,
+            "dsm": kn_rel.split("-")[0],
             "toolchain_release": tc_rel,
             "VERSION": ver,
             "PATCHLEVEL": patch,
@@ -132,32 +148,72 @@ def discover(dsm=None):
     return platforms
 
 
+def discover_dsms(dsms):
+    """{dsm: {platform: entry}} for each requested DSM, plus platforms it doesn't cover."""
+    result = {}
+    covered = set()
+    for dsm in dsms:
+        found = discover(dsm)
+        if not found:
+            print("note: no platforms found for DSM {}".format(dsm_name(dsm)), file=sys.stderr)
+        for name, entry in found.items():
+            result.setdefault(entry["dsm"], {})[name] = entry
+            covered.add(name)
+
+    if len(dsms) > 1:
+        # A platform Synology only publishes sources for in another DSM (e.g. a
+        # legacy platform that stopped getting releases) keeps building from
+        # that DSM, so asking for several DSMs doesn't silently drop it.
+        for name, entry in discover(None).items():
+            if name not in covered:
+                result.setdefault(entry["dsm"], {})[name] = entry
+    return {name: result[name] for name in sorted(result)}
+
+
+def dsm_name(dsm):
+    return ".".join(str(x) for x in dsm)
+
+
 def main():
     ap = argparse.ArgumentParser(description="List buildable Synology platforms from archive.synology.com")
-    ap.add_argument("--dsm", help='DSM version to use sources from, e.g. "7.2" (default: newest)')
+    ap.add_argument("--dsm", action="append", default=[], metavar="VERSION",
+                    help='DSM version to use sources from, e.g. "7.2" (repeat for several)')
     ap.add_argument("--summary", help="write a Markdown table of the platforms found to this file")
     args = ap.parse_args()
 
-    dsm = None
-    if args.dsm:
-        if not re.match(r"^\d+(\.\d+)*$", args.dsm):
+    dsms = []
+    for raw in args.dsm:
+        if not re.match(r"^\d+(\.\d+)*$", raw):
             sys.exit('error: --dsm must look like "7.2"')
-        dsm = tuple(int(x) for x in args.dsm.split("."))
+        dsm = tuple(int(x) for x in raw.split("."))
+        if dsm not in dsms:
+            dsms.append(dsm)
 
-    platforms = discover(dsm)
+    if dsms:
+        platforms = discover_dsms(dsms)
+        rows = [(name, platform, p)
+                for name, found in platforms.items()
+                for platform, p in found.items()]
+        where = " for DSM " + ", ".join(dsm_name(d) for d in dsms)
+    else:
+        platforms = discover(None)
+        rows = [(p["dsm"], platform, p) for platform, p in platforms.items()]
+        where = ""
+
     if not platforms:
-        sys.exit("error: no platforms found" + (" for DSM " + args.dsm if dsm else ""))
+        sys.exit("error: no platforms found" + where)
 
     print(json.dumps(platforms, indent=2))
 
     if args.summary:
-        rows = ["| Platform | Kernel | Kernel source | Toolchain |", "| --- | --- | --- | --- |"]
-        for name, p in platforms.items():
-            rows.append("| {} | `{}.{}.{}{}` | {} | {} |".format(
-                name, p["VERSION"], p["PATCHLEVEL"], p["SUBLEVEL"], p["EXTRAVERSION"],
+        table = ["| DSM | Platform | Kernel | Kernel source | Toolchain |",
+                 "| --- | --- | --- | --- | --- |"]
+        for name, platform, p in sorted(rows):
+            table.append("| {} | {} | `{}.{}.{}{}` | {} | {} |".format(
+                name, platform, p["VERSION"], p["PATCHLEVEL"], p["SUBLEVEL"], p["EXTRAVERSION"],
                 p["release"], p["toolchain_release"]))
         with open(args.summary, "w") as f:
-            f.write("\n".join(rows) + "\n")
+            f.write("\n".join(table) + "\n")
 
 
 if __name__ == "__main__":

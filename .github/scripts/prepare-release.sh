@@ -2,7 +2,7 @@
 # Packages compiled modules and writes release notes, ready for a GitHub Release.
 #
 # Usage: prepare-release.sh <modules dir> <tag|auto> <target commit> <out dir>
-#   modules dir  <kernel version>/<platform>/*.ko plus sources.json
+#   modules dir  <dsm>/<kernel version>/<platform>/*.ko plus sources.json
 #   tag          the release tag, or "auto" to pick the next version after the
 #                newest vX.Y.Z tag: a minor bump when the release adds a platform,
 #                otherwise a patch bump
@@ -26,6 +26,14 @@ if [ -n "$prev" ] && git show "$prev:compiled_modules/sources.json" > "$out/prev
   previous=(--previous "$out/previous.json")
 fi
 
+# "dsm/platform" for every platform in a sources.json, whether it is keyed by DSM
+# (current) or flat (releases made before per-DSM builds).
+dsm_platforms='
+  if (to_entries | map(.value | type == "object" and has("toolchain")) | any)
+  then [ to_entries[] | "\(.value.dsm // (.value.release | split("-")[0]))/\(.key)" ]
+  else [ to_entries[] | .key as $dsm | .value | keys[] | "\($dsm)/\(.)" ]
+  end'
+
 if [ "$tag" = auto ]; then
   IFS=. read -r major minor patch <<< "${prev:-v0.0.0}"
   major=${major#v}
@@ -33,7 +41,7 @@ if [ "$tag" = auto ]; then
     added=1
   else
     added=$(jq -n --slurpfile old "$out/previous.json" --slurpfile new "$modules/sources.json" \
-      '($new[0] | keys) - ($old[0] | keys) | length')
+      "([\$new[0] | $dsm_platforms[]] | sort) - ([\$old[0] | $dsm_platforms[]] | sort) | length")
   fi
   if [ "$added" -gt 0 ]; then
     tag="v$major.$((minor + 1)).0"
@@ -44,10 +52,12 @@ fi
 echo "$tag" > "$out/tag"
 echo "Release $tag (previous: ${prev:-none})" >&2
 
-# One zip per platform. Named <platform>.zip because GitHub renames assets containing "+".
-for dir in "$modules"/*/*/; do
+# One zip per DSM/platform. Named <platform>-dsm<dsm>.zip because GitHub renames
+# assets containing "+", and a platform can be built for more than one DSM.
+for dir in "$modules"/*/*/*/; do
+  dsm=$(basename "$(dirname "$(dirname "$dir")")")
   platform=$(basename "$dir")
-  (cd "$dir" && zip -qj "$out/dist/$platform.zip" ./*.ko)
+  (cd "$dir" && zip -qj "$out/dist/$platform-dsm$dsm.zip" ./*.ko)
 done
 (cd "$modules" && zip -qr "$out/dist/all-platforms.zip" .)
 cp "$modules/sources.json" "$out/dist/sources.json"

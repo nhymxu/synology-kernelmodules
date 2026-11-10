@@ -18,28 +18,68 @@ if [ ! -f "platforms.json" ]; then
   fi
 fi
 
+# A platforms file covering several DSM versions is keyed by DSM first
+# ({"7.2": {...}, "7.4": {...}}); pick the one this build is for. A file with a
+# single DSM (or one pinned by hand) is already the platform map.
+PLATFORMS=/tmp/platforms.json
+if [ -n "${DSM_VERSION:-}" ] &&
+   jq -e --arg dsm "$DSM_VERSION" '.[$dsm] | type == "object" and (has("toolchain") | not)' \
+     platforms.json > /dev/null 2>&1; then
+  jq --arg dsm "$DSM_VERSION" '.[$dsm]' platforms.json > "$PLATFORMS"
+else
+  cp platforms.json "$PLATFORMS"
+fi
+
+# If the file still looks like {"7.2": {...}, "7.4": {...}}, this build needs to
+# know which DSM version it is for.
+if ! jq -e '[.[] | has("toolchain")] | any' "$PLATFORMS" > /dev/null 2>&1; then
+  if [ -n "${DSM_VERSION:-}" ]; then
+    echo "Error: this platforms file has no sources for DSM $DSM_VERSION."
+  else
+    echo "Error: this platforms file covers more than one DSM version."
+    echo "Set DSM_VERSION (e.g. 7.2) to choose which one to build."
+  fi
+  echo "Available DSM versions:"
+  jq -r 'keys[]' "$PLATFORMS" 2>/dev/null || true
+  exit 1
+fi
+
 # Check for platform ENV variable
 if [ -z "$PLATFORM" ]; then
   echo "Error: PLATFORM is not set!"
   echo "Use one of the following platforms:"
   echo
-  jq -r 'keys[]' platforms.json
+  jq -r 'keys[]' "$PLATFORMS"
   exit 1
 fi
 
-if ! jq -e --arg PLATFORM "$PLATFORM" 'has($PLATFORM)' platforms.json > /dev/null; then
+if ! jq -e --arg PLATFORM "$PLATFORM" 'has($PLATFORM)' "$PLATFORMS" > /dev/null; then
   echo "Error: unknown platform '$PLATFORM'${DSM_VERSION:+ for DSM $DSM_VERSION}"
   echo "Use one of the following platforms:"
   echo
-  jq -r 'keys[]' platforms.json
+  jq -r 'keys[]' "$PLATFORMS"
   exit 1
 fi
 
 echo "PLATFORM is set to: $PLATFORM"
-jq --arg PLATFORM "$PLATFORM" '.[$PLATFORM] | {kernel, toolchain}' platforms.json
+jq --arg PLATFORM "$PLATFORM" '.[$PLATFORM] | {kernel, toolchain, dsm, release}' "$PLATFORMS"
 
 # read all the values from the platforms file.
-export $(jq -r --arg PLATFORM "$PLATFORM" '.[$PLATFORM] | to_entries | map("SYNO_\(.key)=\(.value)") | .[]' platforms.json)
+export $(jq -r --arg PLATFORM "$PLATFORM" '.[$PLATFORM] | to_entries | map("SYNO_\(.key)=\(.value)") | .[]' "$PLATFORMS")
+
+# Modules are kept per DSM version as well as per kernel, because the same
+# platform can be built from 7.2 and 7.4 sources (same vermagic, different
+# toolchain/sources): <dsm>/<kernel version>/<platform>/.
+DSM_TAG=${SYNO_dsm:-${DSM_VERSION:-}}
+if [ -z "$DSM_TAG" ]; then
+  DSM_TAG=$(echo "${SYNO_release:-}" | cut -d- -f1)
+fi
+if [ -z "$DSM_TAG" ]; then
+  echo "Error: could not work out which DSM version these sources are for."
+  echo "Set DSM_VERSION (e.g. 7.2) or use a platforms file from discover_platforms.py."
+  exit 1
+fi
+echo "DSM version: $DSM_TAG"
 
 
 # check we're running the correct image
@@ -239,7 +279,8 @@ fi
 
 #------------------------------------------------------
 
-FINAL_FOLDER="/compiled_modules/$SYNO_VERSION.$SYNO_PATCHLEVEL.$SYNO_SUBLEVEL$SYNO_EXTRAVERSION/$PLATFORM"
+# Modules are kept per DSM version as well as per kernel (see DSM_TAG above).
+FINAL_FOLDER="/compiled_modules/$DSM_TAG/$SYNO_VERSION.$SYNO_PATCHLEVEL.$SYNO_SUBLEVEL$SYNO_EXTRAVERSION/$PLATFORM"
 mkdir -p $FINAL_FOLDER
 cp net/ipv4/netfilter/iptable_raw.ko $FINAL_FOLDER/iptable_raw.ko
 cp net/ipv6/netfilter/ip6table_raw.ko $FINAL_FOLDER/ip6table_raw.ko

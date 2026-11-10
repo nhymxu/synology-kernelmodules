@@ -4,9 +4,10 @@
   release_notes.py --modules compiled_modules --sources compiled_modules/sources.json \
       [--repo owner/name --tag v1.2.0] [--changelog generated.md] [--previous old_sources.json]
 
---modules     directory laid out as <kernel version>/<platform>/*.ko
---sources     discover_platforms.py output for the platforms that were built
---repo/--tag  link each platform to its zip on that release (zips named <platform>.zip)
+--modules     directory laid out as <dsm>/<kernel version>/<platform>/*.ko
+--sources     discover_platforms.py output for the platforms that were built,
+              keyed by DSM: {"7.4": {"apollolake": {...}, ...}, ...}
+--repo/--tag  link each platform to its zip on that release (zips named <platform>-dsm<dsm>.zip)
 --changelog   GitHub's generated release notes, regrouped by conventional-commit prefix
 --previous    sources.json from before this build, to show what changed (for PRs)
 
@@ -32,18 +33,24 @@ OTHER = "Other changes"
 
 
 def built_platforms(modules_dir):
-    """{platform: (kernel version, [module names])} from the compiled modules tree."""
+    """{(dsm, platform): (kernel version, [module names])} from the compiled modules tree."""
     found = {}
-    for kver in sorted(os.listdir(modules_dir)):
-        kdir = os.path.join(modules_dir, kver)
-        if not os.path.isdir(kdir):
+    for dsm in sorted(os.listdir(modules_dir)):
+        dsm_dir = os.path.join(modules_dir, dsm)
+        if not os.path.isdir(dsm_dir):
             continue
-        for platform in sorted(os.listdir(kdir)):
-            pdir = os.path.join(kdir, platform)
-            mods = [f[:-3] for f in os.listdir(pdir) if f.endswith(".ko")]
-            mods.sort(key=lambda m: (MODULE_ORDER.index(m) if m in MODULE_ORDER else 99, m))
-            if mods:
-                found[platform] = (kver, mods)
+        for kver in sorted(os.listdir(dsm_dir)):
+            kdir = os.path.join(dsm_dir, kver)
+            if not os.path.isdir(kdir):
+                continue
+            for platform in sorted(os.listdir(kdir)):
+                pdir = os.path.join(kdir, platform)
+                if not os.path.isdir(pdir):
+                    continue
+                mods = [f[:-3] for f in os.listdir(pdir) if f.endswith(".ko")]
+                mods.sort(key=lambda m: (MODULE_ORDER.index(m) if m in MODULE_ORDER else 99, m))
+                if mods:
+                    found[(dsm, platform)] = (kver, mods)
     return found
 
 
@@ -51,26 +58,38 @@ def dsm(release):
     return "DSM " + release if release else "unknown"
 
 
+def normalize(sources):
+    """{dsm: {platform: entry}}, accepting the flat layout of older sources.json files."""
+    if sources and all(isinstance(v, dict) and "toolchain" in v for v in sources.values()):
+        nested = {}
+        for platform, entry in sources.items():
+            name = entry.get("dsm") or (entry.get("release", "").split("-")[0] or "unknown")
+            entry = dict(entry, dsm=name)
+            nested.setdefault(name, {})[platform] = entry
+        return nested
+    return sources
+
+
 def platform_table(built, sources, previous=None, repo=None, tag=None):
-    head = ["Platform", "Kernel", "Modules", "Built from"]
+    head = ["DSM", "Platform", "Kernel", "Modules", "Built from"]
     if previous is not None:
         head.append("Previously")
     if repo and tag:
         head.append("Download")
     rows = ["| " + " | ".join(head) + " |", "|" + " --- |" * len(head)]
-    for platform, (kver, mods) in sorted(built.items()):
-        src = sources.get(platform, {})
-        row = [platform, "`{}`".format(kver), ", ".join(mods), dsm(src.get("release"))]
+    for (dsm_name, platform), (kver, mods) in sorted(built.items()):
+        src = sources.get(dsm_name, {}).get(platform, {})
+        row = [dsm_name, platform, "`{}`".format(kver), ", ".join(mods), dsm(src.get("release"))]
         if previous is not None:
-            old = previous.get(platform)
+            old = previous.get(dsm_name, {}).get(platform)
             if not old:
-                row.append("**new platform**")
+                row.append("**new build**")
             elif old == src:
                 row.append("same sources")
             else:
                 row.append(dsm(old.get("release")))
         if repo and tag:
-            name = platform + ".zip"
+            name = "{}-dsm{}.zip".format(platform, dsm_name)
             row.append("[{}](https://github.com/{}/releases/download/{}/{})".format(name, repo, tag, name))
         rows.append("| " + " | ".join(row) + " |")
     return "\n".join(rows)
@@ -120,7 +139,7 @@ def regroup_changelog(text):
 
 def load(path):
     with open(path) as f:
-        return json.load(f)
+        return normalize(json.load(f))
 
 
 def main():
@@ -145,7 +164,7 @@ def main():
         nums = [int(n) for n in re.findall(r"\d+", kver)[:2]]
         return nums < [3, 18]
 
-    legacy = sorted(p for p, (kver, mods) in built.items() if before_overlayfs(kver))
+    legacy = sorted("{}-dsm{}".format(p, d) for (d, p), (kver, _) in built.items() if before_overlayfs(kver))
     out = []
 
     if args.tag:
@@ -158,7 +177,7 @@ def main():
             "",
             "Run `uname -a` on your NAS. The end of the output names your platform "
             "(for example, `synology_geminilake_920+` means **geminilake**), and the kernel version "
-            "must match the Kernel column exactly.",
+            "must match the Kernel column exactly. Download the file for your platform and DSM version.",
             "",
         ]
     else:
@@ -175,8 +194,8 @@ def main():
 
     if args.tag:
         out += [
-            "`all-platforms.zip` has every platform. `sources.json` lists the exact toolchain and "
-            "kernel source URLs each platform was built from.",
+            "`all-platforms.zip` has every platform and DSM version. `sources.json` lists the exact "
+            "toolchain and kernel source URLs each build used.",
             "",
             "## Installing",
             "",
