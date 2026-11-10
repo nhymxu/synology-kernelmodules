@@ -1,6 +1,6 @@
 #!/bin/bash
 # Writes <modules dir>/SHA256SUMS covering every .ko under it, with paths relative
-# to that directory (e.g. "7.4/4.4.302+/apollolake/iptable_raw.ko"), so it can be
+# to that directory (e.g. "dsm7.4/4.4.302+/apollolake/iptable_raw.ko"), so it can be
 # checked from inside the directory with `sha256sum -c SHA256SUMS`.
 #
 # Usage: write-checksums.sh <modules dir>

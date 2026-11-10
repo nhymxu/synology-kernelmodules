@@ -6,8 +6,7 @@
 set -euo pipefail
 
 PLATFORMS_FILE="discovered_platforms.json"
-# DSM_VERSION is the old single-version spelling, kept so existing scripts work.
-DSM_VERSIONS="${DSM_VERSIONS:-${DSM_VERSION:-7.2 7.4}}"
+DSM_VERSIONS="${DSM_VERSIONS:-7.2 7.4}"
 
 dsm_args=()
 for version in $DSM_VERSIONS; do

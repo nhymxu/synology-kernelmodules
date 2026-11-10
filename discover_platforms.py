@@ -31,9 +31,8 @@ output is then keyed by DSM version first, so one run can cover several of them:
   }
 
 A platform appears under every requested DSM that has both a toolchain and
-kernel source for it. Platforms that only have sources in some other DSM (e.g.
-cedarview in 7.1.1) are still included, under the DSM they do have sources for,
-so a multi-DSM build never drops a platform.
+kernel source for it. Platforms with sources only in some other DSM (e.g.
+cedarview in 7.1.1) are left out.
 
 Usage:
   discover_platforms.py [--dsm 7.2 [--dsm 7.4 ...]] [--summary FILE]
@@ -149,24 +148,15 @@ def discover(dsm=None):
 
 
 def discover_dsms(dsms):
-    """{dsm: {platform: entry}} for each requested DSM, plus platforms it doesn't cover."""
+    """{dsm: {platform: entry}} for each requested DSM."""
     result = {}
-    covered = set()
     for dsm in dsms:
         found = discover(dsm)
         if not found:
             print("note: no platforms found for DSM {}".format(dsm_name(dsm)), file=sys.stderr)
         for name, entry in found.items():
             result.setdefault(entry["dsm"], {})[name] = entry
-            covered.add(name)
 
-    if len(dsms) > 1:
-        # A platform Synology only publishes sources for in another DSM (e.g. a
-        # legacy platform that stopped getting releases) keeps building from
-        # that DSM, so asking for several DSMs doesn't silently drop it.
-        for name, entry in discover(None).items():
-            if name not in covered:
-                result.setdefault(entry["dsm"], {})[name] = entry
     return {name: result[name] for name in sorted(result)}
 
 

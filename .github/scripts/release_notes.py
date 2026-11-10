@@ -4,7 +4,7 @@
   release_notes.py --modules compiled_modules --sources compiled_modules/sources.json \
       [--repo owner/name --tag v1.2.0] [--changelog generated.md] [--previous old_sources.json]
 
---modules     directory laid out as <dsm>/<kernel version>/<platform>/*.ko
+--modules     directory laid out as dsm<dsm>/<kernel version>/<platform>/*.ko
 --sources     discover_platforms.py output for the platforms that were built,
               keyed by DSM: {"7.4": {"apollolake": {...}, ...}, ...}
 --repo/--tag  link each platform to its zip on that release (zips named <platform>-dsm<dsm>.zip)
@@ -35,8 +35,9 @@ OTHER = "Other changes"
 def built_platforms(modules_dir):
     """{(dsm, platform): (kernel version, [module names])} from the compiled modules tree."""
     found = {}
-    for dsm in sorted(os.listdir(modules_dir)):
-        dsm_dir = os.path.join(modules_dir, dsm)
+    for dsm_dirname in sorted(os.listdir(modules_dir)):
+        dsm = dsm_dirname.removeprefix("dsm")
+        dsm_dir = os.path.join(modules_dir, dsm_dirname)
         if not os.path.isdir(dsm_dir):
             continue
         for kver in sorted(os.listdir(dsm_dir)):

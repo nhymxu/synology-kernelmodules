@@ -45,7 +45,7 @@ include=$(jq -c \
         dockerfile: (if .value.VERSION == "3" then "Dockerfile_legacy" else "Dockerfile" end)
       }
   ]
-  | map(.dir = "\(.dsm)/\(.kver)/\(.platform)")
+  | map(.dir = "dsm\(.dsm)/\(.kver)/\(.platform)")
   | sort_by(.dsm, .platform)' "$json_file")
 
 if [ "$include" = "[]" ]; then

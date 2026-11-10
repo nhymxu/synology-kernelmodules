@@ -2,7 +2,7 @@
 # Packages compiled modules and writes release notes, ready for a GitHub Release.
 #
 # Usage: prepare-release.sh <modules dir> <tag|auto> <target commit> <out dir>
-#   modules dir  <dsm>/<kernel version>/<platform>/*.ko plus sources.json
+#   modules dir  dsm<dsm>/<kernel version>/<platform>/*.ko plus sources.json
 #   tag          the release tag, or "auto" to pick the next version after the
 #                newest vX.Y.Z tag: a minor bump when the release adds a platform,
 #                otherwise a patch bump
@@ -56,6 +56,7 @@ echo "Release $tag (previous: ${prev:-none})" >&2
 # assets containing "+", and a platform can be built for more than one DSM.
 for dir in "$modules"/*/*/*/; do
   dsm=$(basename "$(dirname "$(dirname "$dir")")")
+  dsm=${dsm#dsm}
   platform=$(basename "$dir")
   (cd "$dir" && zip -qj "$out/dist/$platform-dsm$dsm.zip" ./*.ko)
 done

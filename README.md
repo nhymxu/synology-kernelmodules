@@ -18,7 +18,7 @@ docker build -t compile_modules .
 docker run --privileged --rm -v ./compiled_modules:/compiled_modules:rw -e PLATFORM=apollolake -e DSM_VERSION=7.4 compile_modules
 ```
 
-Modules land in `compiled_modules/<dsm>/<kernel version>/<platform>/`, for example `compiled_modules/7.4/4.4.302+/apollolake/`. `DSM_VERSION` says which DSM release's sources to build from; leave it out (and don't mount a platforms file) to use the newest sources.
+Modules land in `compiled_modules/dsmdsm<dsm>/<kernel version>/<platform>/`, for example `compiled_modules/dsm7.4/4.4.302+/apollolake/`. `DSM_VERSION` says which DSM release's sources to build from; leave it out (and don't mount a platforms file) to use the newest sources.
 
 ### Where the platforms come from
 
@@ -26,7 +26,7 @@ There's no platform list to maintain. Each build reads [Synology's toolchain arc
 
 - **List the platforms:** run the container without `PLATFORM`, or run `python3 discover_platforms.py | jq -r 'keys[]'`.
 - **Pick a DSM version:** add `-e DSM_VERSION=7.2` to build from DSM 7.2 sources instead of the newest. `python3 discover_platforms.py --dsm 7.2 | jq -r '."7.2" | keys[]'` lists what 7.2 can build.
-- **Build several DSM versions:** `discover_platforms.py --dsm 7.2 --dsm 7.4` prints `{"7.2": {...}, "7.4": {...}}`. A platform is built for every requested DSM that publishes sources for it, so the same platform can have both a `7.2/` and a `7.4/` directory. Platforms that only have sources in another DSM (e.g. `cedarview` in 7.1.1) are kept, under the DSM they do have sources for.
+- **Build several DSM versions:** `discover_platforms.py --dsm 7.2 --dsm 7.4` prints `{"7.2": {...}, "7.4": {...}}`. A platform is built for every requested DSM that publishes sources for it, so the same platform can have both a `dsm7.2/` and a `dsm7.4/` directory. Platforms with sources only in another DSM (e.g. `cedarview` in 7.1.1) are left out.
 - **Pin exact sources:** mount your own file with `-v ./my_platforms.json:/synology-toolkit/platforms.json:ro`. Use the format `discover_platforms.py` prints (keyed by DSM, or a single DSM's platform map).
 
 The kernel version each platform runs (e.g. `4.4.302+`) comes from a small table in `discover_platforms.py` covering DSM 7's three kernel series. That's the only thing to update, and only if Synology moves to a new kernel series. Discovery fails with an error naming the platform if that happens, so it can't be missed.
@@ -41,7 +41,7 @@ DSM_VERSIONS="7.2" ./compile_for_all.sh      # just one DSM
 DSM_VERSIONS="7.2 7.3 7.4" ./compile_for_all.sh
 ```
 
-It discovers the platforms once, mounts that list into every container, and writes each build to `compiled_modules/<dsm>/<kernel version>/<platform>/`.
+It discovers the platforms once, mounts that list into every container, and writes each build to `compiled_modules/dsmdsm<dsm>/<kernel version>/<platform>/`.
 
 ## Using GitHub Actions
 
@@ -58,7 +58,7 @@ Releases attach one zip per DSM and platform (`<platform>-dsm<dsm>.zip`, e.g. `a
 
 Each run lists the platforms it found in the run summary, checks that the expected `.ko` files were produced, and checks that their `vermagic` matches the platform's kernel version. Download the results from the run's **Artifacts** section: there is one `modules-<dsm>-<platform>` artifact per build, plus a combined `compiled_modules`.
 
-`compiled_modules/SHA256SUMS` lists a SHA256 checksum for every module on `main`, with paths like `7.4/4.4.302+/apollolake/iptable_raw.ko`. It's rewritten in the same commit whenever modules change, so tools that download modules from `main` can check them before loading:
+`compiled_modules/SHA256SUMS` lists a SHA256 checksum for every module on `main`, with paths like `dsm7.4/4.4.302+/apollolake/iptable_raw.ko`. It's rewritten in the same commit whenever modules change, so tools that download modules from `main` can check them before loading:
 
 ```bash
 cd compiled_modules && sha256sum -c SHA256SUMS
@@ -85,10 +85,10 @@ docker run --privileged --rm -v ./compiled_modules:/compiled_modules:rw -e PLATF
 
 #### Once run for your platform, your modules should be available in the appropriate folders for copying to your synology. Given the above setup, they're in (for example):
 
-- `compiled_modules/7.4/4.4.302+/apollolake/iptable_raw.ko`
-- `compiled_modules/7.4/4.4.302+/apollolake/ip6table_raw.ko`
+- `compiled_modules/dsm7.4/4.4.302+/apollolake/iptable_raw.ko`
+- `compiled_modules/dsm7.4/4.4.302+/apollolake/ip6table_raw.ko`
 
-#### If you're on a 7.2 NAS, use the modules built from DSM 7.2 sources (`compiled_modules/7.2/4.4.302+/...`). Modules built from 7.4 sources usually load as well (the kernel version is the same), but the 7.2 build is the one made from that DSM's own toolchain and sources.
+#### If you're on a 7.2 NAS, use the modules built from DSM 7.2 sources (`compiled_modules/dsm7.2/4.4.302+/...`). Modules built from 7.4 sources usually load as well (the kernel version is the same), but the 7.2 build is the one made from that DSM's own toolchain and sources.
 
 #### If you're on a linux box or have WSL, you can check the details of the mod by running, for example:
 
@@ -140,7 +140,7 @@ Currently, `entrypoint.sh` reads the `PLATFORM` and `DSM_VERSION` values that ar
 
 `apply_patches.sh` gets called from `entrypoint.sh` before compilation, in case any modifications are needed to config or source.
 
-Once module compilations are complete, compiled modules are copied out to `/compiled_modules/<dsm>/<kernel version>/<platform>/`.
+Once module compilations are complete, compiled modules are copied out to `/compiled_modules/dsmdsm<dsm>/<kernel version>/<platform>/`.
 
 So... if you want to make significant changes to this, `entrypoint.sh` is the place to start.
 

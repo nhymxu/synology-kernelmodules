@@ -69,7 +69,7 @@ export $(jq -r --arg PLATFORM "$PLATFORM" '.[$PLATFORM] | to_entries | map("SYNO
 
 # Modules are kept per DSM version as well as per kernel, because the same
 # platform can be built from 7.2 and 7.4 sources (same vermagic, different
-# toolchain/sources): <dsm>/<kernel version>/<platform>/.
+# toolchain/sources): dsm<dsm>/<kernel version>/<platform>/.
 DSM_TAG=${SYNO_dsm:-${DSM_VERSION:-}}
 if [ -z "$DSM_TAG" ]; then
   DSM_TAG=$(echo "${SYNO_release:-}" | cut -d- -f1)
@@ -280,7 +280,7 @@ fi
 #------------------------------------------------------
 
 # Modules are kept per DSM version as well as per kernel (see DSM_TAG above).
-FINAL_FOLDER="/compiled_modules/$DSM_TAG/$SYNO_VERSION.$SYNO_PATCHLEVEL.$SYNO_SUBLEVEL$SYNO_EXTRAVERSION/$PLATFORM"
+FINAL_FOLDER="/compiled_modules/dsm$DSM_TAG/$SYNO_VERSION.$SYNO_PATCHLEVEL.$SYNO_SUBLEVEL$SYNO_EXTRAVERSION/$PLATFORM"
 mkdir -p $FINAL_FOLDER
 cp net/ipv4/netfilter/iptable_raw.ko $FINAL_FOLDER/iptable_raw.ko
 cp net/ipv6/netfilter/ip6table_raw.ko $FINAL_FOLDER/ip6table_raw.ko

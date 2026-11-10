@@ -1,19 +1,4 @@
 {
-  "7.1.1": {
-    "cedarview": {
-      "toolchain": "https://global.synologydownload.com/download/ToolChain/toolchain/7.1-42661/Intel%20x86%20Linux%203.10.108%20%28Cedarview%29/cedarview-gcc850_glibc226_x86_64-GPL.txz",
-      "kernel": "https://global.synologydownload.com/download/ToolChain/Synology%20NAS%20GPL%20Source/7.1.1-42962/cedarview/linux-3.10.x.txz",
-      "release": "7.1.1-42962",
-      "toolchain_release": "7.1-42661",
-      "VERSION": "3",
-      "PATCHLEVEL": "10",
-      "SUBLEVEL": "108",
-      "EXTRAVERSION": "",
-      "ARCH": "x86_64",
-      "CROSS_COMPILE": "/usr/local/x86_64-pc-linux-gnu/bin/x86_64-pc-linux-gnu-",
-      "dsm": "7.1.1"
-    }
-  },
   "7.2": {
     "kvmcloud": {
       "toolchain": "https://global.synologydownload.com/download/ToolChain/toolchain/7.2-72806/Intel%20x86%20Linux%204.4.302%20%28Kvmcloud%29/kvmcloud-gcc1220_glibc236_x86_64-GPL.txz",

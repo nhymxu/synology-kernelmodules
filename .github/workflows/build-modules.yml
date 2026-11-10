@@ -215,10 +215,10 @@ jobs:
       - name: Record sources
         run: |
           mkdir -p compiled_modules
-          # Built modules live at <dsm>/<kernel version>/<platform>/.
+          # Built modules live at dsm<dsm>/<kernel version>/<platform>/.
           built=$(find compiled_modules -mindepth 3 -maxdepth 3 -type d -printf '%P\n' | jq -R . | jq -sc .)
           jq -n --argjson built "$built" --slurpfile found "$RUNNER_TEMP/discovered_platforms.json" '
-            reduce ($built[] | split("/")) as $p ({};
+            reduce ($built[] | split("/") | .[0] |= ltrimstr("dsm")) as $p ({};
               if $found[0][$p[0]][$p[2]] == null then .
               else .[$p[0]] = ((.[$p[0]] // {}) + {($p[2]): $found[0][$p[0]][$p[2]]})
               end)
@@ -234,6 +234,7 @@ jobs:
             for dir in compiled_modules/*/*/*/; do
               [ -d "$dir" ] || continue
               dsm=$(basename "$(dirname "$(dirname "$dir")")")
+              dsm=${dsm#dsm}
               kver=$(basename "$(dirname "$dir")")
               platform=$(basename "$dir")
               mods=$(find "$dir" -maxdepth 1 -name '*.ko' -printf '%f ' | sort)
@@ -331,7 +332,7 @@ jobs:
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SCHEDULED: ${{ github.event_name == 'schedule' }}
-          DSM_VERSION: ${{ inputs.dsm }}
+          DSM_VERSIONS: ${{ inputs.dsm || '7.2, 7.4' }}
         run: |
           new="$RUNNER_TEMP/compiled_modules"
           if [ "$(jq '[.[] | keys[]] | length' "$new/sources.json")" = 0 ]; then
@@ -345,9 +346,7 @@ jobs:
             if [ "$SCHEDULED" = true ]; then
               echo "The weekly check found new Synology sources, so these platforms were rebuilt by [this workflow run]($RUN_URL)."
             else
-              src="the newest"
-              [ -n "$DSM_VERSION" ] && src="DSM $DSM_VERSION"
-              echo "Modules rebuilt by [this workflow run]($RUN_URL) from $src sources."
+              echo "Modules rebuilt by [this workflow run]($RUN_URL) from DSM $DSM_VERSIONS sources."
             fi
             echo
             python3 .github/scripts/release_notes.py --modules "$new" --sources "$new/sources.json" "${previous[@]}"
