@@ -212,7 +212,7 @@ def main():
             "",
             "To load them on every boot, add the `insmod` lines to a Task Scheduler task that "
             "runs as `root` at boot. See the "
-            "[README](https://github.com/{}#readme) for details.".format(args.repo or ""),
+            "[install guide](https://github.com/{}/blob/main/INSTALL.md) for details.".format(args.repo or ""),
             "",
         ]
 

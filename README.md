@@ -131,6 +131,8 @@ x_tables               17395  24 ip6table_filter,xt_ipvs,xt_iprange,xt_mark,xt_r
 
 #### If you want to load the libraries on startup, add the `insmod` lines from above to a Scheduled Task, running as `root` on boot, or add to a service that is loading modules on startup.
 
+#### For the complete install guide — finding the right platform and DSM folder, copying with correct ownership, verifying `vermagic`, troubleshooting `insmod` errors, surviving DSM updates, and removing them again — see [INSTALL.md](INSTALL.md).
+
 ---
 
 ## If you want to modify this...
