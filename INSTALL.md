@@ -10,7 +10,62 @@ with the same `.ko` files; only the path you get them from differs.
 
 ---
 
-## 1. Find your platform and kernel version
+## Quick install: `install-modules.sh`
+
+The script in this repo does steps 1–5 below on the NAS in one pass: it detects the platform and
+kernel, picks the matching build, downloads it, checks every module against `SHA256SUMS` and its
+`vermagic`, installs into `/lib/modules`, and loads it.
+
+```bash
+# on the NAS, as root
+curl -fsSLO https://raw.githubusercontent.com/nhymxu/synology-kernelmodules/nhymxu/install-modules.sh
+chmod +x install-modules.sh
+
+sudo ./install-modules.sh --dry-run   # download + verify only, changes nothing
+sudo ./install-modules.sh             # install and load
+sudo ./install-modules.sh --boot      # install, load, and load again at every boot
+```
+
+It prints what it resolved and refuses to install anything if a checksum or `vermagic` doesn't
+match:
+
+```
+platform: broadwellnk
+kernel:   4.4.302+
+dsm:      7.4
+source:   nhymxu/synology-kernelmodules@nhymxu / dsm7.4/4.4.302+/broadwellnk
+checksum: iptable_raw.ko ok
+vermagic: iptable_raw.ko ok (4.4.302+ SMP mod_unload )
+checksum: ip6table_raw.ko ok
+vermagic: ip6table_raw.ko ok (4.4.302+ SMP mod_unload )
+installed: /lib/modules/iptable_raw.ko
+installed: /lib/modules/ip6table_raw.ko
+loaded:    iptable_raw
+loaded:    ip6table_raw
+```
+
+| Option | Effect |
+| --- | --- |
+| `-n`, `--dry-run` | Download and verify, install nothing |
+| `-b`, `--boot` | Write `/usr/local/etc/rc.d/load-kernel-modules.sh` (survives reboots, not DSM updates) |
+| `-o`, `--with-overlay` | Also install `overlay.ko` (skipped automatically on Linux 3.10) |
+| `-L`, `--no-load` | Install the files but don't `insmod` them |
+| `-p`, `--platform NAME` | Override detection, e.g. `broadwellnk` |
+| `-k`, `--kernel VER` | Override `uname -r`, e.g. `4.4.302+` |
+| `-d`, `--dsm X.Y` | Override the DSM source folder, e.g. `7.4` |
+| `-r`, `--repo OWNER/REPO` | Pull from a different fork, e.g. `telnetdoogie-labs/synology-kernelmodules` |
+| `-B`, `--branch NAME` | Pull from another branch |
+| `-m`, `--modules "A B"` | Choose the modules explicitly |
+
+Overrides are only needed when detection guesses wrong; a model-only `/proc/sys/kernel/syno_hw_version`
+(see below) is handled automatically. If you'd rather do it by hand — or you want to see exactly
+what each step does — continue with the manual steps.
+
+---
+
+## Manual install
+
+### 1. Find your platform and kernel version
 
 The module has to be built for the exact kernel your NAS runs, so start by asking the NAS. SSH in
 (Control Panel → Terminal & SNMP → Enable SSH service) and run:
@@ -45,7 +100,7 @@ compiled_modules/dsm7.4/4.4.302+/apollolake/
 └── overlay.ko
 ```
 
-### If `syno_hw_version` prints only a model name
+#### If `syno_hw_version` prints only a model name
 
 On some DSM builds — `DS3622xs+`, `DS2422+`, and others — `/proc/sys/kernel/syno_hw_version`
 returns the bare model instead of the platform:
@@ -105,9 +160,9 @@ open an issue.
 
 ---
 
-## 2. Get the files onto the NAS
+### 2. Get the files onto the NAS
 
-### From a release zip (no build needed)
+#### From a release zip (no build needed)
 
 Download `<platform>-dsm<dsm>.zip` from the [releases page](https://github.com/telnetdoogie-labs/synology-kernelmodules/releases),
 then upload it to a volume with File Station or `scp`:
@@ -116,13 +171,13 @@ then upload it to a volume with File Station or `scp`:
 scp apollolake-dsm7.4.zip admin@your-nas:/volume1/
 ```
 
-### From a local build in this repo
+#### From a local build in this repo
 
 ```bash
 scp "compiled_modules/dsm7.4/4.4.302+/apollolake/"*.ko admin@your-nas:/volume1/modules/
 ```
 
-### Optional: check the checksums first
+#### Optional: check the checksums first
 
 `compiled_modules/SHA256SUMS` lists a checksum for every module on `main`, with paths such as
 `dsm7.4/4.4.302+/apollolake/iptable_raw.ko`. Verify on the machine that has the repo, before copying:
@@ -136,7 +191,7 @@ download, not a compromised repository.
 
 ---
 
-## 3. Verify the module matches your kernel
+### 3. Verify the module matches your kernel
 
 Do this **before** loading anything. A mismatched module fails with `invalid module format` and can
 look like a broken build.
@@ -166,7 +221,7 @@ For x86_64 platforms (apollolake, geminilake, broadwellnk, purley, …) this sho
 
 ---
 
-## 4. Install and load
+### 4. Install and load
 
 Put the files in `/lib/modules` with root ownership so nothing can quietly modify them:
 
@@ -203,11 +258,11 @@ ip_tables              14342  4 iptable_filter,iptable_mangle,iptable_nat,iptabl
 The `0` after the size is the use count — it's expected to be low; `iptable_raw` only gets used once
 something actually creates raw-table rules (Docker does this when it starts).
 
-### `insmod: ERROR: could not insert module ...: File exists`
+#### `insmod: ERROR: could not insert module ...: File exists`
 
 The module is already built into your running kernel. Nothing to do — move on.
 
-### `insmod: ERROR: could not insert module ...: Invalid module format`
+#### `insmod: ERROR: could not insert module ...: Invalid module format`
 
 The `vermagic` doesn't match (wrong kernel folder), the file is truncated, or it's the wrong
 architecture. Re-check step 3. The usual cause is picking the folder by **model** instead of
@@ -215,14 +270,14 @@ architecture. Re-check step 3. The usual cause is picking the folder by **model*
 `4.4.302` where the NAS runs `4.4.302+`. Confirm with `uname -r` and
 `grep unique= /etc.defaults/synoinfo.conf`.
 
-### `insmod: ERROR: could not insert module ...: Unknown symbol in module`
+#### `insmod: ERROR: could not insert module ...: Unknown symbol in module`
 
 A dependency isn't loaded. Check `dmesg | tail -20` for the missing symbol name and confirm
 `ip_tables` / `ip6_tables` are present in `lsmod`.
 
 ---
 
-## 5. Load them at every boot
+### 5. Load them at every boot
 
 `insmod` is one-shot; nothing on DSM knows about these modules, so a reboot drops them.
 
@@ -258,7 +313,7 @@ verify the ordering after a reboot — `lsmod | grep raw` is the quickest check.
 
 ---
 
-## 6. After a DSM update
+### 6. After a DSM update
 
 DSM updates replace the root filesystem, so **`/lib/modules` loses these files** and the boot task
 may stop working. After every DSM upgrade:
@@ -274,7 +329,7 @@ updates on its own.
 
 ---
 
-## 7. Unloading and removing
+### 7. Unloading and removing
 
 If a module causes trouble, unload it (this fails while something is using it — stop Docker/containers
 first if `iptable_raw` is held):
@@ -295,7 +350,7 @@ happen immediately.
 
 ---
 
-## Platform notes
+### Platform notes
 
 - **Linux 3.10 platforms** (avoton, braswell, bromolow, grantley, cedarview): only `iptable_raw.ko`
   and `ip6table_raw.ko` exist. There is no `overlay.ko` — overlayfs arrived in Linux 3.18 and

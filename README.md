@@ -4,6 +4,23 @@
 
 ---
 
+## Installing on your NAS
+
+Once the modules exist — from a release zip, or built below — you still have to get them onto the
+device. `install-modules.sh` runs **on the NAS** and does the whole job: it detects the platform and
+kernel, downloads the matching build, verifies each module against `SHA256SUMS` and its `vermagic`,
+installs it into `/lib/modules` and loads it. `--boot` also keeps them loaded across reboots.
+
+```bash
+sudo ./install-modules.sh --dry-run   # download and verify only
+sudo ./install-modules.sh --boot      # install, load, and load at every boot
+```
+
+See [INSTALL.md](INSTALL.md) for the script's options, the platform/model table, and the manual
+procedure if you'd rather do each step yourself.
+
+---
+
 ## Using Docker
 
 I am just using docker now which automates all the above. All you have to pass is the platform name (and optionally the DSM version to build from), like `apollolake` or `geminilake`
