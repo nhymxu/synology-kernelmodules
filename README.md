@@ -7,13 +7,13 @@
 ## Installing on your NAS
 
 Once the modules exist — from a release zip, or built below — you still have to get them onto the
-device. `install-modules.sh` runs **on the NAS** and does the whole job: it detects the platform and
+device. `nas-install-modules.sh` runs **on the NAS** and does the whole job: it detects the platform and
 kernel, downloads the matching build, verifies each module against `SHA256SUMS` and its `vermagic`,
 installs it into `/lib/modules` and loads it. `--boot` also keeps them loaded across reboots.
 
 ```bash
-sudo ./install-modules.sh --dry-run   # download and verify only
-sudo ./install-modules.sh --boot      # install, load, and load at every boot
+sudo ./nas-install-modules.sh --dry-run   # download and verify only
+sudo ./nas-install-modules.sh --boot      # install, load, and load at every boot
 ```
 
 See [INSTALL.md](INSTALL.md) for the script's options, the platform/model table, and the manual

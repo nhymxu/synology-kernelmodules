@@ -10,7 +10,7 @@ with the same `.ko` files; only the path you get them from differs.
 
 ---
 
-## Quick install: `install-modules.sh`
+## Quick install: `nas-install-modules.sh`
 
 The script in this repo does steps 1–5 below on the NAS in one pass: it detects the platform and
 kernel, picks the matching build, downloads it, checks every module against `SHA256SUMS` and its
@@ -18,12 +18,12 @@ kernel, picks the matching build, downloads it, checks every module against `SHA
 
 ```bash
 # on the NAS, as root
-curl -fsSLO https://raw.githubusercontent.com/nhymxu/synology-kernelmodules/nhymxu/install-modules.sh
-chmod +x install-modules.sh
+curl -fsSLO https://raw.githubusercontent.com/nhymxu/synology-kernelmodules/nhymxu/nas-install-modules.sh
+chmod +x nas-install-modules.sh
 
-sudo ./install-modules.sh --dry-run   # download + verify only, changes nothing
-sudo ./install-modules.sh             # install and load
-sudo ./install-modules.sh --boot      # install, load, and load again at every boot
+sudo ./nas-install-modules.sh --dry-run   # download + verify only, changes nothing
+sudo ./nas-install-modules.sh             # install and load
+sudo ./nas-install-modules.sh --boot      # install, load, and load again at every boot
 ```
 
 It prints what it resolved and refuses to install anything if a checksum or `vermagic` doesn't
