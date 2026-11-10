@@ -17,20 +17,24 @@ The module has to be built for the exact kernel your NAS runs, so start by askin
 
 ```bash
 uname -r
+grep -o 'unique="[^"]*"' /etc.defaults/synoinfo.conf
 cat /proc/sys/kernel/syno_hw_version
 ```
 
-Example output:
+(If the `grep` comes back empty, prefix it with `sudo`.)
+
+Example output on a DS920+:
 
 ```
 4.4.302+
+unique="synology_apollolake_920+"
 synology_apollolake_920+
 ```
 
 - `uname -r` is the kernel version **including the `+` suffix**. It becomes the middle directory
   name. Only the `4.4.302+` / `5.10.55+` / `3.10.108` part matters — DSM patch levels don't change it.
-- `syno_hw_version` gives the platform. Drop the `synology_` prefix and the model suffix:
-  `synology_apollolake_920+` → **apollolake**.
+- The `unique=` line gives the platform: `synology_<platform>_<model>`. Drop the `synology_` prefix
+  and the model suffix — `synology_apollolake_920+` → **apollolake**.
 
 Together they select one directory in `compiled_modules/`, for example:
 
@@ -41,12 +45,56 @@ compiled_modules/dsm7.4/4.4.302+/apollolake/
 └── overlay.ko
 ```
 
+### If `syno_hw_version` prints only a model name
+
+On some DSM builds — `DS3622xs+`, `DS2422+`, and others — `/proc/sys/kernel/syno_hw_version`
+returns the bare model instead of the platform:
+
+```bash
+$ cat /proc/sys/kernel/syno_hw_version
+DS3622xs+
+```
+
+That's still useful, just not a platform name. Read the platform from the `unique=` line instead,
+which is reliable on every DSM 7 build:
+
+```bash
+$ grep -o 'unique="[^"]*"' /etc.defaults/synoinfo.conf
+unique="synology_broadwellnk_3622xs+"
+```
+
+→ platform **broadwellnk**, so the folder is `compiled_modules/dsm7.4/4.4.302+/broadwellnk/`.
+
+If the `unique=` line is missing too, map the model with the table below. Note the model number is
+not the platform: `DS3622xs+` is **not** built for `broadwell` or `kvmx64`, and `DS920+` is not
+`apollolake` despite both being 4.4.302+ machines.
+
+| Model | Platform | Kernel (DSM 7) |
+| --- | --- | --- |
+| DS918+, DS1019+ | apollolake | `4.4.302+` |
+| DS920+, DS1520+, DS220+, DS420+ | geminilake | `4.4.302+` |
+| DS1621+, DS1821+, DS2422+, RS1221+ | v1000 | `4.4.302+` |
+| DS3622xs+, RS3621xs+, RS4021xs+ | broadwellnk | `4.4.302+` |
+| DS3617xs | broadwell | `4.4.302+` |
+| DS3018xs, DS1618+ | denverton | `4.4.302+` |
+| RS1619xs+, FS6400, FS3400 | purley | `4.4.302+` |
+| DS923+, DS1522+, DS723+ | r1000 | `4.4.302+` |
+| DS1823xs+ | v1000nk | `5.10.55+` |
+| DS1515+, DS1815+, DS415+ | avoton | `3.10.108` (legacy) |
+| DS916+, DS416play | braswell | `3.10.108` (legacy) |
+
+The table is a convenience for common units, not an authority. `unique=` on the running NAS always
+wins, and `uname -r` decides the kernel directory. If your model isn't listed, search the
+[Synology product page](https://www.synology.com/products) for its CPU, or compare against
+`compiled_modules/sources.json`, which records the platform names Synology publishes.
+
 **Which DSM folder?** Prefer the one matching your installed DSM major/minor version (`dsm7.2/`,
 `dsm7.4/`). Both were built from the same kernel series and either normally loads, but the folder
 for your own DSM was built with that release's toolchain and sources, so it's the safer choice.
 Check your version under Control Panel → Info Center, or `cat /etc/VERSION`.
 
-**Which platform if it isn't listed?** Use `discover_platforms.py` to see what exists:
+**Platform not in `compiled_modules/`?** Confirm what this repo actually builds with
+`discover_platforms.py`:
 
 ```bash
 python3 discover_platforms.py | jq -r 'keys[]'
@@ -162,7 +210,10 @@ The module is already built into your running kernel. Nothing to do — move on.
 ### `insmod: ERROR: could not insert module ...: Invalid module format`
 
 The `vermagic` doesn't match (wrong kernel folder), the file is truncated, or it's the wrong
-architecture. Re-check step 3.
+architecture. Re-check step 3. The usual cause is picking the folder by **model** instead of
+**platform** — a `DS3622xs+` needs `broadwellnk/`, not a folder named after the model — or using
+`4.4.302` where the NAS runs `4.4.302+`. Confirm with `uname -r` and
+`grep unique= /etc.defaults/synoinfo.conf`.
 
 ### `insmod: ERROR: could not insert module ...: Unknown symbol in module`
 
