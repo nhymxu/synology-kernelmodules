@@ -17,13 +17,14 @@ kernel, picks the matching build, downloads it, checks every module against `SHA
 `vermagic`, installs into `/lib/modules`, and loads it.
 
 ```bash
-# on the NAS, as root
+# on the NAS
 curl -fsSLO https://raw.githubusercontent.com/nhymxu/synology-kernelmodules/nhymxu/nas-install-modules.sh
 chmod +x nas-install-modules.sh
 
-sudo ./nas-install-modules.sh --dry-run   # download + verify only, changes nothing
-sudo ./nas-install-modules.sh             # install and load
-sudo ./nas-install-modules.sh --boot      # install, load, and load again at every boot
+./nas-install-modules.sh                 # print this guide
+sudo ./nas-install-modules.sh --dry-run  # download + verify only, changes nothing
+sudo ./nas-install-modules.sh --install  # install and load
+sudo ./nas-install-modules.sh --install --boot   # ...and again at every boot
 ```
 
 It prints what it resolved and refuses to install anything if a checksum or `vermagic` doesn't
@@ -44,18 +45,30 @@ loaded:    iptable_raw
 loaded:    ip6table_raw
 ```
 
+Run with no arguments for the guide. One action is required:
+
+| Action | Effect |
+| --- | --- |
+| `--install` | Download, verify, install into `/lib/modules`, then `insmod` |
+| `--dry-run` | Do everything except install and load |
+| `-h`, `--help` | Print the guide |
+
+Modifiers:
+
 | Option | Effect |
 | --- | --- |
-| `-n`, `--dry-run` | Download and verify, install nothing |
-| `-b`, `--boot` | Write `/usr/local/etc/rc.d/load-kernel-modules.sh` (survives reboots, not DSM updates) |
-| `-o`, `--with-overlay` | Also install `overlay.ko` (skipped automatically on Linux 3.10) |
-| `-L`, `--no-load` | Install the files but don't `insmod` them |
-| `-p`, `--platform NAME` | Override detection, e.g. `broadwellnk` |
-| `-k`, `--kernel VER` | Override `uname -r`, e.g. `4.4.302+` |
-| `-d`, `--dsm X.Y` | Override the DSM source folder, e.g. `7.4` |
-| `-r`, `--repo OWNER/REPO` | Pull from a different fork, e.g. `telnetdoogie-labs/synology-kernelmodules` |
-| `-B`, `--branch NAME` | Pull from another branch |
-| `-m`, `--modules "A B"` | Choose the modules explicitly |
+| `--boot` | Also write `/usr/local/etc/rc.d/load-kernel-modules.sh` (survives reboots, not DSM updates) |
+| `--with-overlay` | Also install `overlay.ko` (skipped automatically on Linux 3.10) |
+| `--no-load` | Install the files but don't `insmod` them |
+| `--platform NAME` | Override detection, e.g. `broadwellnk` |
+| `--kernel VER` | Override `uname -r`, e.g. `4.4.302+` |
+| `--dsm X.Y` | Override the DSM source folder, e.g. `7.4` |
+| `--repo OWNER/REPO` | Pull from a different fork, e.g. `telnetdoogie-labs/synology-kernelmodules` |
+| `--branch NAME` | Pull from another branch |
+| `--modules "A B"` | Choose the modules explicitly |
+
+Modifiers on their own do nothing — without `--install` or `--dry-run` the script prints the guide
+and exits non-zero.
 
 Overrides are only needed when detection guesses wrong; a model-only `/proc/sys/kernel/syno_hw_version`
 (see below) is handled automatically. If you'd rather do it by hand — or you want to see exactly

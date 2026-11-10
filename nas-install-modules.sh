@@ -1,29 +1,8 @@
 #!/bin/sh
-# nas-install-modules.sh - download, verify, install and load the optional kernel
-# modules (iptable_raw, ip6table_raw, optionally overlay) on a Synology NAS.
+# nas-install-modules.sh - install the optional kernel modules (iptable_raw,
+# ip6table_raw, optionally overlay) on a Synology NAS.
 #
-# Run it on the NAS as root:
-#
-#   sudo ./nas-install-modules.sh
-#
-# It figures out the platform and kernel itself, pulls the matching modules from
-# the repo, checks them against the repo's SHA256SUMS and their vermagic, then
-# installs them into /lib/modules and loads them.
-#
-# Options:
-#   -n, --dry-run          download and verify only, change nothing
-#   -b, --boot             also install /usr/local/etc/rc.d/load-kernel-modules.sh
-#   -o, --with-overlay     include overlay.ko (not available on Linux 3.10)
-#   -L, --no-load          install the files but do not insmod them
-#   -p, --platform NAME    override platform detection (e.g. broadwellnk)
-#   -k, --kernel VER       override kernel version (e.g. 4.4.302+)
-#   -d, --dsm X.Y          override DSM version (e.g. 7.4)
-#   -r, --repo OWNER/REPO  source repo (default nhymxu/synology-kernelmodules)
-#   -B, --branch NAME      source branch (default nhymxu)
-#   -m, --modules "A B"    modules to install (default "iptable_raw ip6table_raw")
-#   -h, --help             show this help
-#
-# Environment equivalents: REPO, BRANCH, PLATFORM, KERNEL, DSM.
+# Run without arguments for the guide, or `--help`.
 set -eu
 
 REPO="${REPO:-nhymxu/synology-kernelmodules}"
@@ -33,11 +12,12 @@ KERNEL="${KERNEL:-}"
 DSM="${DSM:-}"
 LIBDIR="${LIBDIR:-/lib/modules}"
 BOOT_SCRIPT="${BOOT_SCRIPT:-/usr/local/etc/rc.d/load-kernel-modules.sh}"
-MODULES_DEFAULT="iptable_raw ip6table_raw"
-MODULES="$MODULES_DEFAULT"
+MODULES="iptable_raw ip6table_raw"
+ACTION=""
 DRY_RUN=0
 DO_BOOT=0
 DO_LOAD=1
+NO_LOAD_EXPLICIT=0
 WITH_OVERLAY=0
 
 TMPDIR_ROOT="${TMPDIR:-/tmp}"
@@ -45,8 +25,61 @@ WORK=""
 STATUS=0
 
 usage() {
-    sed -n '2,/^set -eu/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
-    exit 0
+    cat <<EOF
+nas-install-modules.sh - install the optional kernel modules on a Synology NAS
+
+USAGE
+  sudo ./nas-install-modules.sh --install       install and load the modules
+  sudo ./nas-install-modules.sh --dry-run       download and verify, change nothing
+  ./nas-install-modules.sh                      show this guide
+
+WHAT IT DOES
+  1. detects the platform (unique= in /etc.defaults/synoinfo.conf, with fallbacks)
+     and the kernel (uname -r, keeping the '+' suffix)
+  2. downloads the matching .ko files from ${REPO}@${BRANCH} at
+     compiled_modules/dsm<version>/<kernel>/<platform>/
+  3. verifies each file against the repo's SHA256SUMS and checks its vermagic
+     against the running kernel - any mismatch aborts before anything is
+     installed
+  4. installs into ${LIBDIR} and loads with insmod
+
+EXAMPLES
+  sudo ./nas-install-modules.sh --install
+      install and load them now
+  sudo ./nas-install-modules.sh --install --boot
+      ...and load them again at every boot
+  sudo ./nas-install-modules.sh --dry-run
+      download and verify only - use this first
+  sudo ./nas-install-modules.sh --install --platform broadwellnk
+      override platform detection (a DS3622xs+ is broadwellnk)
+  sudo ./nas-install-modules.sh --install --with-overlay
+      include overlay.ko as well
+
+ACTIONS (exactly one is required)
+  --install              download, verify, install into ${LIBDIR}, then insmod
+  --dry-run              do everything except install and load
+  -h, --help             show this guide
+
+MODIFIERS
+  --boot                 also write ${BOOT_SCRIPT}
+                         so the modules load at every boot
+  --with-overlay         include overlay.ko (absent on Linux 3.10 platforms)
+  --no-load              install the files but do not insmod them
+  --platform NAME        override platform detection, e.g. broadwellnk
+  --kernel VER           override uname -r, e.g. 4.4.302+
+  --dsm X.Y              override the DSM source directory, e.g. 7.4
+  --repo OWNER/REPO      pull from another fork (default ${REPO})
+  --branch NAME          pull from another branch (default ${BRANCH})
+  --modules "A B"        choose the modules (default "${MODULES}")
+
+NOTES
+  - DSM updates replace /lib/modules: re-run --install after upgrading.
+  - Modules load immediately; --boot is what makes them survive a reboot.
+  - Full guide, including the manual procedure: INSTALL.md in the repo.
+
+Environment equivalents: REPO, BRANCH, PLATFORM, KERNEL, DSM, LIBDIR.
+EOF
+    exit "${1:-0}"
 }
 
 log()  { printf '%s\n' "$*"; }
@@ -55,7 +88,11 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-cleanup() { [ -n "$WORK" ] && rm -rf "$WORK"; }
+cleanup() {
+    if [ -n "$WORK" ]; then
+        rm -rf "$WORK"
+    fi
+}
 trap cleanup EXIT INT TERM
 
 check_privileges() {
@@ -65,26 +102,41 @@ check_privileges() {
         DO_LOAD=0
         return 0
     fi
-    die "must run as root (try: sudo $0)"
+    die "must run as root (try: sudo $0 --install)"
 }
+
+if [ $# -eq 0 ]; then
+    usage 0
+fi
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -n|--dry-run)      DRY_RUN=1 ;;
-        -b|--boot)         DO_BOOT=1 ;;
-        -o|--with-overlay) WITH_OVERLAY=1 ;;
-        -L|--no-load)      DO_LOAD=0 ;;
-        -p|--platform)     PLATFORM="${2:?--platform needs a value}"; shift ;;
-        -k|--kernel)       KERNEL="${2:?--kernel needs a value}"; shift ;;
-        -d|--dsm)          DSM="${2:?--dsm needs a value}"; shift ;;
-        -r|--repo)         REPO="${2:?--repo needs a value}"; shift ;;
-        -B|--branch)       BRANCH="${2:?--branch needs a value}"; shift ;;
-        -m|--modules)      MODULES="${2:?--modules needs a value}"; shift ;;
-        -h|--help)         usage ;;
+        --install)         ACTION=install ;;
+        --dry-run)         DRY_RUN=1 ;;
+        --boot)            DO_BOOT=1 ;;
+        --with-overlay)    WITH_OVERLAY=1 ;;
+        --no-load)         DO_LOAD=0; NO_LOAD_EXPLICIT=1 ;;
+        --platform)        PLATFORM="${2:?--platform needs a value}"; shift ;;
+        --kernel)          KERNEL="${2:?--kernel needs a value}"; shift ;;
+        --dsm)             DSM="${2:?--dsm needs a value}"; shift ;;
+        --repo)            REPO="${2:?--repo needs a value}"; shift ;;
+        --branch)          BRANCH="${2:?--branch needs a value}"; shift ;;
+        --modules)         MODULES="${2:?--modules needs a value}"; shift ;;
+        -h|--help)         usage 0 ;;
         *)                 die "unknown option: $1 (try --help)" ;;
     esac
     shift
 done
+
+if [ "$DRY_RUN" = 1 ]; then
+    [ "$ACTION" = "install" ] && warn "--install ignored: this is a dry run"
+    ACTION=dryrun
+fi
+
+if [ -z "$ACTION" ]; then
+    printf 'error: no action given - nothing to do\n\n' >&2
+    usage 1
+fi
 
 [ "$WITH_OVERLAY" = 1 ] && MODULES="$MODULES overlay"
 
@@ -210,7 +262,7 @@ log "kernel:   $KERNEL"
 log "dsm:      $DSM"
 [ "$DRY_RUN" = 1 ] || check_privileges
 
-WORK="$(mktemp -d "${TMPDIR_ROOT%/}/install-modules.XXXXXX")" || die "could not create temp dir"
+WORK="$(mktemp -d "${TMPDIR_ROOT%/}/nas-install-modules.XXXXXX")" || die "could not create temp dir"
 
 # Prefer the exact DSM build, then fall back to the ones this repo publishes.
 DSM_CANDIDATES="$DSM"
@@ -391,8 +443,10 @@ fi
 log ""
 if [ "$DO_LOAD" = 1 ]; then
     log "modules now loaded:"
-else
+elif [ "$NO_LOAD_EXPLICIT" = 1 ]; then
     log "modules installed (not loaded, --no-load):"
+else
+    log "modules installed (not loaded - re-run as root to load them):"
 fi
 for m in $INSTALLED; do
     if [ "$DO_LOAD" != 1 ]; then
@@ -409,8 +463,8 @@ done
 
 if [ "$DO_BOOT" != 1 ] && [ "$DO_LOAD" = 1 ]; then
     log ""
-    log "These load now but will be gone after a reboot. Re-run with --boot to"
-    log "install $BOOT_SCRIPT, or add the insmod lines to a Task Scheduler"
+    log "These load now but will be gone after a reboot. Re-run with --install --boot"
+    log "to install $BOOT_SCRIPT, or add the insmod lines to a Task Scheduler"
     log "boot-up task running as root."
 fi
 

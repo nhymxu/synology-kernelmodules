@@ -13,7 +13,7 @@ installs it into `/lib/modules` and loads it. `--boot` also keeps them loaded ac
 
 ```bash
 sudo ./nas-install-modules.sh --dry-run   # download and verify only
-sudo ./nas-install-modules.sh --boot      # install, load, and load at every boot
+sudo ./nas-install-modules.sh --install --boot   # install, load, and load at every boot
 ```
 
 See [INSTALL.md](INSTALL.md) for the script's options, the platform/model table, and the manual
